@@ -341,14 +341,17 @@ function SelectField({
   onChange,
   disabled = false,
   getOptionLabel,
+  allowCustom = false,
 }) {
   const options =
-    value && !values.includes(value) ? [value, ...values] : values;
+    allowCustom && value && !values.includes(value)
+      ? [value, ...values]
+      : values;
   return (
     <label className="field">
       <span>{label}</span>
       <select
-        value={value}
+        value={options.includes(value) ? value : ''}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled}
       >
@@ -372,10 +375,26 @@ function Appointment({ item, index, total, update, remove }) {
       subcomponent: ['cause', 'faultSolution'],
       cause: ['faultSolution'],
     };
-    update(index, {
+
+    const nextUpdates = {
       [key]: value,
       ...Object.fromEntries((resets[key] || []).map((field) => [field, ''])),
-    });
+    };
+
+    // Ao selecionar o Problema (cause), se houver apenas 1 solução associada na taxonomia oficial, já preenche automaticamente:
+    if (key === 'cause') {
+      const currentSystem = faultTree[item.system] || {};
+      const currentComp = currentSystem[item.component] || {};
+      const currentSub = currentComp[item.subcomponent] || {};
+      const sols = currentSub[value] || [];
+      if (sols.length === 1) {
+        nextUpdates.faultSolution = sols[0];
+      } else {
+        nextUpdates.faultSolution = '';
+      }
+    }
+
+    update(index, nextUpdates);
   };
   return (
     <article className="appointment">
@@ -401,6 +420,7 @@ function Appointment({ item, index, total, update, remove }) {
           values={fleetEquipments}
           onChange={(value) => update(index, { asset: value })}
           getOptionLabel={(eq) => getTag(eq)}
+          allowCustom={true}
         />
         <SelectField
           label="Código de manutenção"
@@ -819,8 +839,38 @@ export default function Page() {
               updated.endTime.trim() &&
               updated.status === 'Aguardando recurso'
             ) {
-              return { ...updated, status: 'Liberado' };
+              updated.status = 'Liberado';
             }
+
+            // Valida e sanitiza a Classe de Falha contra a taxonomia oficial:
+            if (updated.system) {
+              const sys = faultTree[updated.system];
+              if (sys && updated.component) {
+                const comp = sys[updated.component];
+                if (comp && updated.subcomponent) {
+                  const sub = comp[updated.subcomponent];
+                  if (sub && updated.cause) {
+                    const sols = sub[updated.cause] || [];
+                    if (!sols.includes(updated.faultSolution)) {
+                      updated.faultSolution = sols.length === 1 ? sols[0] : '';
+                    }
+                  } else if (sub) {
+                    updated.cause = '';
+                    updated.faultSolution = '';
+                  }
+                } else if (comp) {
+                  updated.subcomponent = '';
+                  updated.cause = '';
+                  updated.faultSolution = '';
+                }
+              } else if (sys) {
+                updated.component = '';
+                updated.subcomponent = '';
+                updated.cause = '';
+                updated.faultSolution = '';
+              }
+            }
+
             return updated;
           });
           setAppointments(sanitizedAppointments);
