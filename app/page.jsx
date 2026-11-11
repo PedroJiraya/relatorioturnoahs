@@ -12,12 +12,7 @@ const codes = [
   'HAC – 9700',
   'Operando autônomo',
 ];
-const statuses = [
-  'Liberado',
-  'Em manutenção',
-  'Aguardando recurso',
-  'Aguardando componente',
-];
+const statuses = ['Liberado', 'Em manutenção'];
 
 const teams = ['A', 'B', 'C', 'D', 'ADM'];
 
@@ -133,6 +128,26 @@ function getCodeEmoji(code = '') {
   return '⚙️';
 }
 
+function getLocalDatetimeString() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  const local = new Date(now.getTime() - offset);
+  return local.toISOString().slice(0, 16);
+}
+
+function formatDateTimeWhatsApp(val = '') {
+  if (!val) return '';
+  if (val.includes('T')) {
+    const [datePart, timePart] = val.split('T');
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      const [, month, day] = parts;
+      return `${day}/${month} às ${timePart.slice(0, 5)}`;
+    }
+  }
+  return val;
+}
+
 function formatCA(val = '') {
   if (!val) return '';
   const clean = val.trim().toUpperCase().replace(/\s+/g, '');
@@ -189,7 +204,7 @@ function getFleetSummary(stopped = [], operating = [], appointments = []) {
       const eff =
         a.endTime && a.endTime.trim() && a.status === 'Aguardando recurso'
           ? 'Liberado'
-          : a.status || 'Liberado';
+          : a.status || 'Em manutenção';
       return eff !== 'Liberado';
     })
     .map((a) => formatCA(a.asset))
@@ -294,7 +309,7 @@ function blankAppointment() {
     faultSolution: '',
     diagnosis: '',
     solution: '',
-    status: 'Liberado',
+    status: 'Em manutenção',
   };
 }
 
@@ -310,7 +325,17 @@ function branches(item) {
   };
 }
 
-function Field({ label, value, onChange, onBlur, type = 'text', placeholder }) {
+function Field({
+  label,
+  value,
+  onChange,
+  onBlur,
+  type = 'text',
+  placeholder,
+  disabled = false,
+  title,
+  style,
+}) {
   return (
     <label className="field">
       <span>{label}</span>
@@ -320,6 +345,9 @@ function Field({ label, value, onChange, onBlur, type = 'text', placeholder }) {
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           placeholder={placeholder}
+          disabled={disabled}
+          title={title}
+          style={style}
         />
       ) : (
         <input
@@ -328,6 +356,9 @@ function Field({ label, value, onChange, onBlur, type = 'text', placeholder }) {
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           placeholder={placeholder}
+          disabled={disabled}
+          title={title}
+          style={style}
         />
       )}
     </label>
@@ -431,7 +462,7 @@ function Appointment({ item, index, total, update, remove }) {
         />
         <Field
           label="Horário Início MineStar"
-          type="time"
+          type="datetime-local"
           value={item.startTime || ''}
           onChange={(value) => {
             const currentDelays = item.delays || [];
@@ -449,13 +480,25 @@ function Appointment({ item, index, total, update, remove }) {
         />
         <Field
           label="Horário Fim Technician"
-          type="time"
+          type="datetime-local"
           value={item.endTime || ''}
+          disabled={item.status !== 'Liberado'}
+          title={
+            item.status !== 'Liberado'
+              ? "Bloqueado: marque o Status Final como 'Liberado' para preencher o término"
+              : 'Horário Fim Technician'
+          }
+          style={
+            item.status !== 'Liberado'
+              ? {
+                  background: '#f1f5f9',
+                  color: '#94a3b8',
+                  cursor: 'not-allowed',
+                }
+              : {}
+          }
           onChange={(value) => {
             const changes = { endTime: value };
-            if (value && value.trim()) {
-              changes.status = 'Liberado';
-            }
             // Sincroniza sempre com o término do último atraso (subcódigo filho):
             const currentDelays = item.delays || [];
             if (currentDelays.length > 0) {
@@ -494,29 +537,50 @@ function Appointment({ item, index, total, update, remove }) {
           >
             <span>⏳</span> Justificativas de Atraso / Eventos do Atendimento
           </h4>
+          S
           <button
             type="button"
             className="small outline"
             onClick={() => {
+              const nowStr = getLocalDatetimeString();
               const current = item.delays || [];
               const isFirst = current.length === 0;
-              const prevDelay =
-                current.length > 0 ? current[current.length - 1] : null;
-              // O primeiro atraso é sempre AG ATENDIMENTO e inicia no Início MineStar
               const nextJustification = isFirst ? 'AG ATENDIMENTO' : '';
-              const nextStart = isFirst
-                ? item.startTime || ''
-                : prevDelay?.endTime || '';
-              update(index, {
-                delays: [
-                  ...current,
-                  {
-                    justification: nextJustification,
-                    startTime: nextStart,
-                    endTime: '',
-                  },
-                ],
+
+              // Se já existia um atraso anterior que estava em aberto,
+              // ao criar o novo atraso agora (nowStr), o anterior é encerrado agora:
+              const updatedDelays = [...current];
+              if (!isFirst) {
+                const prevIdx = updatedDelays.length - 1;
+                updatedDelays[prevIdx] = {
+                  ...updatedDelays[prevIdx],
+                  endTime: nowStr,
+                };
+              }
+
+              // O novo atraso inicia agora (nowStr).
+              // Se o equipamento estiver em manutenção (status !== 'Liberado'),
+              // o novo atraso fica com horário fim EM BRANCO ('') pois continua em andamento/aberto!
+              const nextStart = isFirst ? item.startTime || nowStr : nowStr;
+              const nextEnd = item.status === 'Liberado' ? nowStr : '';
+
+              updatedDelays.push({
+                justification: nextJustification,
+                startTime: nextStart,
+                endTime: nextEnd,
               });
+
+              const changes = { delays: updatedDelays };
+              if (isFirst && !item.startTime) {
+                changes.startTime = nextStart;
+              }
+              if (item.status === 'Liberado') {
+                changes.endTime = nextEnd;
+              } else {
+                // Em manutenção: horário fim do equipamento permanece em branco
+                changes.endTime = '';
+              }
+              update(index, changes);
             }}
           >
             + Adicionar atraso
@@ -531,9 +595,10 @@ function Appointment({ item, index, total, update, remove }) {
           }}
         >
           O primeiro atraso é sempre <strong>AG ATENDIMENTO</strong> e inicia
-          automaticamente no <em>Horário Início MineStar</em>. Os atrasos
-          seguintes começam no término do anterior. A liberação final é
-          registrada no <em>Horário Fim Technician</em>.
+          automaticamente no <em>Horário Início MineStar</em>. O horário de
+          término do atraso e o <em>Horário Fim Technician</em> só podem ser
+          alterados quando o <strong>Status Final</strong> for <em>Liberado</em>
+          .
         </p>
         {!item.delays || item.delays.length === 0 ? (
           <p
@@ -592,13 +657,13 @@ function Appointment({ item, index, total, update, remove }) {
                     }
                   >
                     {dIdx === 0 ? (
-                      <option value="AG ATENDIMENTO">⏳ AG ATENDIMENTO</option>
+                      <option value="AG ATENDIMENTO">🕘 AG ATENDIMENTO</option>
                     ) : (
                       <>
                         <option value="">Selecione a justificativa</option>
                         {delayJustifications.map((j) => (
                           <option key={j} value={j}>
-                            {j.startsWith('EXEC') ? '🔧 ' : '⏳ '}
+                            {j.startsWith('EXEC') ? '🔧 ' : '🕘 '}
                             {j}
                           </option>
                         ))}
@@ -606,7 +671,7 @@ function Appointment({ item, index, total, update, remove }) {
                     )}
                   </select>
                   <input
-                    type="time"
+                    type="datetime-local"
                     value={inheritedStart}
                     disabled={true}
                     placeholder="Início"
@@ -622,8 +687,9 @@ function Appointment({ item, index, total, update, remove }) {
                     }}
                   />
                   <input
-                    type="time"
+                    type="datetime-local"
                     value={delay.endTime || ''}
+                    disabled={item.status !== 'Liberado'}
                     onChange={(e) => {
                       const newEndTime = e.target.value;
                       const updated = [...item.delays];
@@ -649,14 +715,24 @@ function Appointment({ item, index, total, update, remove }) {
                       const isLastDelay = dIdx === updated.length - 1;
                       if (isLastDelay) {
                         changes.endTime = newEndTime;
-                        if (newEndTime && newEndTime.trim()) {
-                          changes.status = 'Liberado';
-                        }
                       }
                       update(index, changes);
                     }}
                     placeholder="Fim"
-                    title="Horário Fim do Atraso"
+                    title={
+                      item.status !== 'Liberado'
+                        ? "Bloqueado: selecione o Status Final como 'Liberado' para preencher o fim do atraso"
+                        : 'Horário Fim do Atraso'
+                    }
+                    style={
+                      item.status !== 'Liberado'
+                        ? {
+                            background: '#f1f5f9',
+                            color: '#94a3b8',
+                            cursor: 'not-allowed',
+                          }
+                        : {}
+                    }
                   />
                   <button
                     type="button"
@@ -763,7 +839,47 @@ function Appointment({ item, index, total, update, remove }) {
               type="radio"
               name={`status-${index}`}
               checked={item.status === status}
-              onChange={() => update(index, { status })}
+              onChange={() => {
+                const changes = { status };
+                const currentDelays = item.delays || [];
+
+                if (status === 'Liberado') {
+                  const nowStr = getLocalDatetimeString();
+                  const finalTime =
+                    item.endTime && item.endTime.trim() ? item.endTime : nowStr;
+                  changes.endTime = finalTime;
+
+                  if (currentDelays.length > 0) {
+                    const updated = [...currentDelays];
+                    const lastIdx = updated.length - 1;
+                    if (
+                      !updated[lastIdx].endTime ||
+                      !updated[lastIdx].endTime.trim()
+                    ) {
+                      updated[lastIdx] = {
+                        ...updated[lastIdx],
+                        endTime: finalTime,
+                      };
+                      changes.delays = updated;
+                    }
+                  }
+                } else {
+                  // Regra: se o equipamento estiver com status em manutenção (ou não liberado),
+                  // o horário fim do equipamento fica em branco,
+                  // e o último atraso também fica em branco pois continua em aberto!
+                  changes.endTime = '';
+                  if (currentDelays.length > 0) {
+                    const updated = [...currentDelays];
+                    const lastIdx = updated.length - 1;
+                    updated[lastIdx] = {
+                      ...updated[lastIdx],
+                      endTime: '',
+                    };
+                    changes.delays = updated;
+                  }
+                }
+                update(index, changes);
+              }}
             />
             <span>{status}</span>
           </label>
@@ -781,9 +897,15 @@ export default function Page() {
   const [executors, setExecutors] = useState('');
   const [workshop, setWorkshop] = useState('Oficina N4WN');
   const [conclusion, setConclusion] = useState('');
-  const [appointments, setAppointments] = useState([blankAppointment()]);
+  const [appointments, setAppointments] = useState([]);
   const [stopped, setStopped] = useState([
-    { asset: '', code: codes[0], discipline: '' },
+    {
+      asset: '',
+      code: codes[0],
+      subCode: 'EXEC MANUT',
+      startTime: '',
+      reason: '',
+    },
   ]);
   const [report, setReport] = useState('');
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -799,7 +921,7 @@ export default function Page() {
         const eff =
           a.endTime && a.endTime.trim() && a.status === 'Aguardando recurso'
             ? 'Liberado'
-            : a.status || 'Liberado';
+            : a.status || 'Em manutenção';
         return eff !== 'Liberado';
       })
       .map((a) => formatCA(a.asset))
@@ -824,11 +946,19 @@ export default function Page() {
         if (data.executors !== undefined) setExecutors(data.executors);
         if (data.workshop !== undefined) setWorkshop(data.workshop);
         if (data.conclusion !== undefined) setConclusion(data.conclusion);
-        if (Array.isArray(data.appointments) && data.appointments.length > 0) {
+        if (Array.isArray(data.appointments)) {
           const sanitizedAppointments = data.appointments.map((a) => {
             const updated = { ...a };
-            // Sincroniza sempre o Fim Technician com o término do último subcódigo filho:
-            if (Array.isArray(a.delays) && a.delays.length > 0) {
+            if (updated.status !== 'Liberado') {
+              updated.endTime = '';
+              if (Array.isArray(updated.delays) && updated.delays.length > 0) {
+                const lastIdx = updated.delays.length - 1;
+                updated.delays[lastIdx] = {
+                  ...updated.delays[lastIdx],
+                  endTime: '',
+                };
+              }
+            } else if (Array.isArray(a.delays) && a.delays.length > 0) {
               const lastDelay = a.delays[a.delays.length - 1];
               if (lastDelay?.endTime && lastDelay.endTime.trim()) {
                 updated.endTime = lastDelay.endTime;
@@ -875,8 +1005,16 @@ export default function Page() {
           });
           setAppointments(sanitizedAppointments);
         }
-        if (Array.isArray(data.stopped) && data.stopped.length > 0)
-          setStopped(data.stopped);
+        if (Array.isArray(data.stopped)) {
+          const sanitizedStopped = data.stopped.map((s) => ({
+            asset: s.asset || '',
+            code: s.code || codes[0],
+            subCode: s.subCode || 'EXEC MANUT',
+            startTime: s.startTime || s.stoppedAt || '',
+            reason: s.reason || s.discipline || '',
+          }));
+          setStopped(sanitizedStopped);
+        }
         if (data.report !== undefined) {
           if (
             data.report.includes('🚫 EQUIPAMENTOS PARADOS') ||
@@ -961,11 +1099,11 @@ export default function Page() {
         const assetFormatted = formatCA(item.asset) || 'Ativo não informado';
         const timeLine =
           item.startTime && item.endTime
-            ? `\n⏰ Horário: ${item.startTime} às ${item.endTime}`
+            ? `\n⏰ Horário: ${formatDateTimeWhatsApp(item.startTime)} às ${formatDateTimeWhatsApp(item.endTime)}`
             : item.startTime
-              ? `\n⏰ Início MineStar: ${item.startTime}`
+              ? `\n⏰ Início MineStar: ${formatDateTimeWhatsApp(item.startTime)}`
               : item.endTime
-                ? `\n⏰ Fim: ${item.endTime}`
+                ? `\n⏰ Fim: ${formatDateTimeWhatsApp(item.endTime)}`
                 : '';
 
         const causeLine = item.operationalCause
@@ -991,15 +1129,16 @@ export default function Page() {
                     dIdx,
                     item.startTime,
                   );
+
                   const timeText =
                     effectiveStart && effectiveEnd
-                      ? ` (${effectiveStart} às ${effectiveEnd})`
+                      ? ` (${formatDateTimeWhatsApp(effectiveStart)} às ${formatDateTimeWhatsApp(effectiveEnd)})`
                       : effectiveStart
-                        ? ` (Início: ${effectiveStart})`
+                        ? ` (Início: ${formatDateTimeWhatsApp(effectiveStart)})`
                         : effectiveEnd
-                          ? ` (Fim: ${effectiveEnd})`
+                          ? ` (Fim: ${formatDateTimeWhatsApp(effectiveEnd)})`
                           : '';
-                  const icon = d.justification.startsWith('EXEC') ? '🔧' : '⏳';
+                  const icon = d.justification.startsWith('EXEC') ? '🔧' : '🕘';
                   return `${icon} ${d.justification}${timeText}`;
                 })
                 .join('\n')
@@ -1025,10 +1164,21 @@ export default function Page() {
       stoppedList.length > 0
         ? stoppedList
             .map((item) => {
-              const preInfo = item.discipline ? ` | ${item.discipline}` : '';
-              return `${getCodeEmoji(item.code)} ${formatCA(item.asset)} | ${item.code}${preInfo}`;
+              const codeName = (item.code || '').split('–')[0].trim();
+              const subCodeText = item.subCode
+                ? ` - ${item.subCode}`
+                : ' - EXEC MANUT';
+              const line1 = `${getCodeEmoji(item.code)} ${formatCA(item.asset)} – ${codeName}${subCodeText}`;
+              const timeFormatted = item.startTime
+                ? formatDateTimeWhatsApp(item.startTime)
+                : 'Não informado';
+              const line2 = `INÍCIO: ${timeFormatted}`;
+              const reasonText =
+                item.reason || item.discipline || 'Não informado';
+              const line3 = `MOTIVO: ${reasonText}`;
+              return `${line1}\n\n${line2}\n${line3}`;
             })
-            .join('\n')
+            .join('\n\n')
         : 'Nenhum equipamento informado';
 
     const operatingList = operating.filter((item) => item.asset.trim());
@@ -1042,7 +1192,16 @@ export default function Page() {
     const summary = getFleetSummary(stopped, operating, appointments);
     const summaryText = `\n\n____________________________________\n\n📊 RESUMO DA FROTA (DISPONIBILIDADE OPERACIONAL)\nTotal da Frota: ${summary.totalTrucks} caminhões\n🟢 Operando Autônomo: ${summary.totalAuto} (${summary.percTotalAuto})\n🔴 Em Manutenção: ${summary.totalMaint} (${summary.percTotalMaint})\n\n🚚 Visão por Frota:\n• CAT 797F : 🔴 ${summary.count797F_Maint} manutenção (${summary.perc797F_Maint})\n• CAT 794 AC : 🔴 ${summary.count794AC_Maint} manutenção (${summary.perc794AC_Maint})`;
 
-    return `${greeting}\n\n${emoji.clipboard} RELATÓRIO DE TURNO – MANUTENÇÃO CORRETIVA\n🏢 Local: ${workshop || 'Oficina N4WN'}\n\n${emoji.calendar} Data: ${dateText}\n${emoji.clock} Turno: ${shift}\n${emoji.worker} Turma: ${team || 'Não informado'}\n${emoji.compass} Supervisor: ${supervisor || 'Não informado'}\n${emoji.mechanic} Executantes:\n${executors || 'Não informado'}\n\n____________________________________\n\nATENDIMENTO DOS ATIVOS EM MANUTENÇÃO\n\n${appointmentText}${conclusionBlock}\n\n____________________________________\n\n🚚 EQUIPAMENTOS PARADOS\n${stoppedText}\n\n____________________________________\n\n🚚 EQUIPAMENTOS OPERANDO AUTÔNOMO\n${operatingText}${summaryText}`;
+    const stoppedSection =
+      stoppedList.length > 0
+        ? `🚚 EQUIPAMENTOS PARADOS\n\nDESCRIÇÃO EM MANUTENÇÃO\n\n${stoppedText}`
+        : `🚚 EQUIPAMENTOS PARADOS\n${stoppedText}`;
+
+    const appointmentsSection = appointmentText
+      ? `ATENDIMENTO DOS ATIVOS EM MANUTENÇÃO\n\n${appointmentText}`
+      : `ATENDIMENTO DOS ATIVOS EM MANUTENÇÃO\n\nNenhum atendimento registrado no turno`;
+
+    return `${greeting}\n\n${emoji.clipboard} RELATÓRIO DE TURNO – MANUTENÇÃO CORRETIVA\n🏢 Local: ${workshop || 'Oficina N4WN'}\n\n${emoji.calendar} Data: ${dateText}\n${emoji.clock} Turno: ${shift}\n${emoji.worker} Turma: ${team || 'Não informado'}\n${emoji.compass} Supervisor: ${supervisor || 'Não informado'}\n${emoji.mechanic} Executantes:\n${executors || 'Não informado'}\n\n____________________________________\n\n${appointmentsSection}${conclusionBlock}\n\n____________________________________\n\n${stoppedSection}\n\n____________________________________\n\n🚚 EQUIPAMENTOS OPERANDO AUTÔNOMO\n${operatingText}${summaryText}`;
   };
 
   // Se o relatório de WhatsApp já estiver aberto, mantém o texto sincronizado em tempo real com as alterações
@@ -1076,8 +1235,16 @@ export default function Page() {
       setExecutors('');
       setWorkshop('Oficina N4WN');
       setConclusion('');
-      setAppointments([blankAppointment()]);
-      setStopped([{ asset: '', code: codes[0], discipline: '' }]);
+      setAppointments([]);
+      setStopped([
+        {
+          asset: '',
+          code: codes[0],
+          subCode: 'EXEC MANUT',
+          startTime: '',
+          reason: '',
+        },
+      ]);
       setReport('');
       try {
         localStorage.removeItem(STORAGE_KEY);
@@ -1212,6 +1379,31 @@ export default function Page() {
       }
     });
 
+    // 3. EQUIPAMENTOS PARADOS
+    const stoppedList = stopped.filter((item) => item.asset.trim());
+    rows.push([]);
+    rows.push(['EQUIPAMENTOS PARADOS (DESCRIÇÃO EM MANUTENÇÃO)']);
+    rows.push([
+      'Ativo',
+      'Código',
+      'Subcódigo / Evento',
+      'Início da Parada',
+      'Motivo / Descrição',
+    ]);
+    if (stoppedList.length === 0) {
+      rows.push(['Nenhum equipamento parado informado']);
+    } else {
+      stoppedList.forEach((s) => {
+        rows.push([
+          formatCA(s.asset),
+          s.code || '',
+          s.subCode || 'EXEC MANUT',
+          s.startTime || '',
+          s.reason || s.discipline || '',
+        ]);
+      });
+    }
+
     const csvContent =
       '\uFEFF' +
       rows
@@ -1311,23 +1503,40 @@ export default function Page() {
             </button>
           </div>
           <p className="hint">
-            Adicione outro atendimento quando houver mais de um equipamento
-            trabalhado no turno.
+            Adicione um atendimento quando houver equipamento trabalhado no
+            turno.
           </p>
-          {appointments.map((item, index) => (
-            <Appointment
-              key={index}
-              item={item}
-              index={index}
-              total={appointments.length}
-              update={updateAppointment}
-              remove={(removeIndex) =>
-                setAppointments((items) =>
-                  items.filter((_, itemIndex) => itemIndex !== removeIndex),
-                )
-              }
-            />
-          ))}
+          {appointments.length === 0 ? (
+            <p
+              style={{
+                color: '#64748b',
+                fontStyle: 'italic',
+                margin: '14px 0',
+                padding: '12px 14px',
+                background: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px dashed #cbd5e1',
+              }}
+            >
+              Nenhum atendimento registrado no momento. Clique no botão acima
+              para adicionar um atendimento.
+            </p>
+          ) : (
+            appointments.map((item, index) => (
+              <Appointment
+                key={index}
+                item={item}
+                index={index}
+                total={appointments.length}
+                update={updateAppointment}
+                remove={(removeIndex) =>
+                  setAppointments((items) =>
+                    items.filter((_, itemIndex) => itemIndex !== removeIndex),
+                  )
+                }
+              />
+            ))
+          )}
         </section>
         <section>
           <h2>Observações / conclusão</h2>
@@ -1348,7 +1557,13 @@ export default function Page() {
               onClick={() =>
                 setStopped((items) => [
                   ...items,
-                  { asset: '', code: codes[0], discipline: '' },
+                  {
+                    asset: '',
+                    code: codes[0],
+                    subCode: 'EXEC MANUT',
+                    startTime: '',
+                    reason: '',
+                  },
                 ])
               }
             >
@@ -1398,24 +1613,55 @@ export default function Page() {
                 ))}
               </select>
               <select
-                value={item.discipline || ''}
+                value={item.subCode || 'EXEC MANUT'}
                 onChange={(event) =>
                   setStopped((items) =>
                     items.map((entry, entryIndex) =>
                       entryIndex === index
-                        ? { ...entry, discipline: event.target.value }
+                        ? { ...entry, subCode: event.target.value }
                         : entry,
                     ),
                   )
                 }
+                title="Subcódigo / Evento da Manutenção"
               >
-                <option value="">Pré-informação</option>
-                {stoppedPreInfo.map((info) => (
-                  <option key={info} value={info}>
-                    {info}
+                {delayJustifications.map((j) => (
+                  <option key={j} value={j}>
+                    {j.startsWith('EXEC') ? '🔧 ' : '🕘 '}
+                    {j}
                   </option>
                 ))}
               </select>
+              <input
+                type="datetime-local"
+                value={item.startTime || ''}
+                onChange={(event) =>
+                  setStopped((items) =>
+                    items.map((entry, entryIndex) =>
+                      entryIndex === index
+                        ? { ...entry, startTime: event.target.value }
+                        : entry,
+                    ),
+                  )
+                }
+                title="Data e hora de início da parada"
+                placeholder="Início"
+              />
+              <input
+                type="text"
+                value={item.reason || item.discipline || ''}
+                onChange={(event) =>
+                  setStopped((items) =>
+                    items.map((entry, entryIndex) =>
+                      entryIndex === index
+                        ? { ...entry, reason: event.target.value }
+                        : entry,
+                    ),
+                  )
+                }
+                placeholder="Motivo da parada / breve descrição (Ex.: Falha E1651...)"
+                title="Motivo / Breve descrição"
+              />
               <button
                 type="button"
                 className="remove"
@@ -1749,181 +1995,207 @@ export default function Page() {
                     ATENDIMENTO DOS ATIVOS EM MANUTENÇÃO
                   </div>
 
-                  {appointments.map((item, idx) => (
-                    <div className="pdf-appointment-box" key={idx}>
-                      <div className="pdf-asset-subbar">
-                        <div className="pdf-asset-tag">
-                          {getCodeEmoji(item.code)}{' '}
-                          <strong>
-                            {formatCA(item.asset) || 'Ativo não informado'}
-                          </strong>
-                          {(item.startTime || item.endTime) && (
-                            <span className="pdf-time">
-                              ⏰{' '}
-                              {item.startTime && item.endTime
-                                ? `${item.startTime} às ${item.endTime}`
-                                : item.startTime
-                                  ? `Início: ${item.startTime}`
-                                  : `Fim: ${item.endTime}`}
-                            </span>
-                          )}
-                        </div>
-                        <div className="pdf-asset-code">
-                          <span
-                            className="pdf-badge"
-                            style={{
-                              background: '#f8fafc',
-                              border: '1px solid #cbd5e1',
-                            }}
-                          >
-                            <strong>{item.code}</strong>
-                          </span>
-                        </div>
-                      </div>
-
-                      {item.delays &&
-                        item.delays.filter((d) => d.justification).length >
-                          0 && (
-                          <div className="pdf-delays-box">
-                            <div className="pdf-delays-header">
-                              ⏳ <strong>Justificativas de Atraso / Eventos:</strong>
-                            </div>
-                            <div className="pdf-delays-list">
-                              {(() => {
-                                const delaysList = (item.delays || [])
-                                  .map((d, dIdx) => ({
-                                    ...d,
-                                    justification:
-                                      dIdx === 0
-                                        ? d.justification || 'AG ATENDIMENTO'
-                                        : d.justification,
-                                  }))
-                                  .filter((d) => d.justification);
-                                return delaysList.map((d, dIdx) => {
-                                  const { effectiveStart, effectiveEnd } =
-                                    getDelayTimes(
-                                      delaysList,
-                                      dIdx,
-                                      item.startTime,
-                                    );
-                                  const tStr =
-                                    effectiveStart && effectiveEnd
-                                      ? `${effectiveStart} às ${effectiveEnd}`
-                                      : effectiveStart
-                                        ? `Início: ${effectiveStart}`
-                                        : effectiveEnd
-                                          ? `Fim: ${effectiveEnd}`
-                                          : '';
-                                  const icon = d.justification.startsWith('EXEC')
-                                    ? '🔧'
-                                    : '⏳';
-                                  return (
-                                    <div key={dIdx} className="pdf-delay-row-item">
-                                      <span className="pdf-delay-name">
-                                        {icon} <strong>{d.justification}</strong>
-                                      </span>
-                                      {tStr && (
-                                        <span className="pdf-delay-time">
-                                          ⏰ {tStr}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                });
-                              })()}
-                            </div>
-                          </div>
-                        )}
-
-                      <div className="pdf-grid-two">
-                        <div className="pdf-box">
-                          <div className="pdf-box-header">
-                            ❌ CLASSE DA FALHA
-                          </div>
-                          <div className="pdf-box-content">
-                            {[
-                              item.system,
-                              item.component,
-                              item.subcomponent,
-                              item.cause,
-                              item.faultSolution,
-                            ]
-                              .filter(Boolean)
-                              .map((lvl, lIdx) => (
-                                <div key={lIdx} className="pdf-fault-level">
-                                  {lvl}
-                                </div>
-                              ))}
-                            {![
-                              item.system,
-                              item.component,
-                              item.subcomponent,
-                              item.cause,
-                              item.faultSolution,
-                            ].some(Boolean) && (
-                              <span style={{ color: '#888' }}>
-                                Não informada
+                  {appointments.length === 0 ? (
+                    <div
+                      style={{
+                        padding: '12px 14px',
+                        color: '#64748b',
+                        fontStyle: 'italic',
+                        fontSize: '0.82rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '4px',
+                        marginBottom: '14px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      Nenhum atendimento registrado no turno
+                    </div>
+                  ) : (
+                    appointments.map((item, idx) => (
+                      <div className="pdf-appointment-box" key={idx}>
+                        <div className="pdf-asset-subbar">
+                          <div className="pdf-asset-tag">
+                            {getCodeEmoji(item.code)}{' '}
+                            <strong>
+                              {formatCA(item.asset) || 'Ativo não informado'}
+                            </strong>
+                            {(item.startTime || item.endTime) && (
+                              <span className="pdf-time">
+                                ⏰{' '}
+                                {item.startTime && item.endTime
+                                  ? `${formatDateTimeWhatsApp(item.startTime)} às ${formatDateTimeWhatsApp(item.endTime)}`
+                                  : item.startTime
+                                    ? `Início: ${formatDateTimeWhatsApp(item.startTime)}`
+                                    : `Fim: ${formatDateTimeWhatsApp(item.endTime)}`}
                               </span>
                             )}
                           </div>
-                        </div>
-                        <div className="pdf-box">
-                          <div className="pdf-box-header">⚠️ CAUSA</div>
-                          <div className="pdf-box-content pdf-pre-wrap">
-                            {item.operationalCause ||
-                              item.cause ||
-                              'Não informada'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pdf-grid-two">
-                        <div className="pdf-box">
-                          <div className="pdf-box-header">
-                            🔍 SOLUÇÃO / DIAGNÓSTICO EXECUTADO
-                          </div>
-                          <div className="pdf-box-content pdf-pre-wrap">
-                            {item.diagnosis || 'Não informado'}
-                          </div>
-                        </div>
-                        <div className="pdf-box">
-                          <div className="pdf-box-header">
-                            🔧 CONTINUAÇÃO DO DIAGNÓSTICO / SOLUÇÃO APLICADA
-                          </div>
-                          <div className="pdf-box-content pdf-pre-wrap">
-                            {item.solution || 'Não informada'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {(() => {
-                        const effectiveStatus =
-                          item.endTime &&
-                          item.endTime.trim() &&
-                          item.status === 'Aguardando recurso'
-                            ? 'Liberado'
-                            : item.status || 'Liberado';
-                        return (
-                          <div className="pdf-status-row">
-                            <span>
-                              📌 <strong>STATUS FINAL:</strong>
+                          <div className="pdf-asset-code">
+                            <span
+                              className="pdf-badge"
+                              style={{
+                                background: '#f8fafc',
+                                border: '1px solid #cbd5e1',
+                              }}
+                            >
+                              <strong>{item.code}</strong>
                             </span>
-                            {statuses.map((st) => {
-                              const isChecked = effectiveStatus === st;
-                              return (
-                                <span
-                                  key={st}
-                                  className={`pdf-status-opt ${isChecked ? 'checked' : ''} ${isChecked && st === 'Liberado' ? 'liberado' : ''}`}
-                                >
-                                  ({isChecked ? 'X' : ' '}) {st}
-                                </span>
-                              );
-                            })}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
+                        </div>
+
+                        {item.delays &&
+                          item.delays.filter((d) => d.justification).length >
+                            0 && (
+                            <div className="pdf-delays-box">
+                              <div className="pdf-delays-header">
+                                🕘{' '}
+                                <strong>
+                                  Justificativas de Atraso / Eventos:
+                                </strong>
+                              </div>
+                              <div className="pdf-delays-list">
+                                {(() => {
+                                  const delaysList = (item.delays || [])
+                                    .map((d, dIdx) => ({
+                                      ...d,
+                                      justification:
+                                        dIdx === 0
+                                          ? d.justification || 'AG ATENDIMENTO'
+                                          : d.justification,
+                                    }))
+                                    .filter((d) => d.justification);
+                                  return delaysList.map((d, dIdx) => {
+                                    const { effectiveStart, effectiveEnd } =
+                                      getDelayTimes(
+                                        delaysList,
+                                        dIdx,
+                                        item.startTime,
+                                      );
+                                    const tStr =
+                                      effectiveStart && effectiveEnd
+                                        ? `${formatDateTimeWhatsApp(effectiveStart)} às ${formatDateTimeWhatsApp(effectiveEnd)}`
+                                        : effectiveStart
+                                          ? `Início: ${formatDateTimeWhatsApp(effectiveStart)}`
+                                          : effectiveEnd
+                                            ? `Fim: ${formatDateTimeWhatsApp(effectiveEnd)}`
+                                            : '';
+                                    const icon = d.justification.startsWith(
+                                      'EXEC',
+                                    )
+                                      ? '🔧'
+                                      : '🕘';
+                                    return (
+                                      <div
+                                        key={dIdx}
+                                        className="pdf-delay-row-item"
+                                      >
+                                        <span className="pdf-delay-name">
+                                          {icon}{' '}
+                                          <strong>{d.justification}</strong>
+                                        </span>
+                                        {tStr && (
+                                          <span className="pdf-delay-time">
+                                            ⏰ {tStr}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                        <div className="pdf-grid-two">
+                          <div className="pdf-box">
+                            <div className="pdf-box-header">
+                              ❌ CLASSE DA FALHA
+                            </div>
+                            <div className="pdf-box-content">
+                              {[
+                                item.system,
+                                item.component,
+                                item.subcomponent,
+                                item.cause,
+                                item.faultSolution,
+                              ]
+                                .filter(Boolean)
+                                .map((lvl, lIdx) => (
+                                  <div key={lIdx} className="pdf-fault-level">
+                                    {lvl}
+                                  </div>
+                                ))}
+                              {![
+                                item.system,
+                                item.component,
+                                item.subcomponent,
+                                item.cause,
+                                item.faultSolution,
+                              ].some(Boolean) && (
+                                <span style={{ color: '#888' }}>
+                                  Não informada
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="pdf-box">
+                            <div className="pdf-box-header">⚠️ CAUSA</div>
+                            <div className="pdf-box-content pdf-pre-wrap">
+                              {item.operationalCause ||
+                                item.cause ||
+                                'Não informada'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pdf-grid-two">
+                          <div className="pdf-box">
+                            <div className="pdf-box-header">
+                              🔍 SOLUÇÃO / DIAGNÓSTICO EXECUTADO
+                            </div>
+                            <div className="pdf-box-content pdf-pre-wrap">
+                              {item.diagnosis || 'Não informado'}
+                            </div>
+                          </div>
+                          <div className="pdf-box">
+                            <div className="pdf-box-header">
+                              🔧 CONTINUAÇÃO DO DIAGNÓSTICO / SOLUÇÃO APLICADA
+                            </div>
+                            <div className="pdf-box-content pdf-pre-wrap">
+                              {item.solution || 'Não informada'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const effectiveStatus =
+                            item.endTime &&
+                            item.endTime.trim() &&
+                            item.status === 'Aguardando recurso'
+                              ? 'Liberado'
+                              : item.status || 'Liberado';
+                          return (
+                            <div className="pdf-status-row">
+                              <span>
+                                📌 <strong>STATUS FINAL:</strong>
+                              </span>
+                              {statuses.map((st) => {
+                                const isChecked = effectiveStatus === st;
+                                return (
+                                  <span
+                                    key={st}
+                                    className={`pdf-status-opt ${isChecked ? 'checked' : ''} ${isChecked && st === 'Liberado' ? 'liberado' : ''}`}
+                                  >
+                                    ({isChecked ? 'X' : ' '}) {st}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ))
+                  )}
 
                   {conclusion && (
                     <div className="pdf-section-block">
@@ -1937,7 +2209,9 @@ export default function Page() {
                   )}
 
                   <div className="pdf-section-block">
-                    <div className="pdf-gray-bar">🚚 EQUIPAMENTOS PARADOS</div>
+                    <div className="pdf-gray-bar">
+                      🚚 EQUIPAMENTOS PARADOS (DESCRIÇÃO EM MANUTENÇÃO)
+                    </div>
                     <table className="pdf-table simple">
                       <thead>
                         <tr
@@ -1948,7 +2222,7 @@ export default function Page() {
                               padding: '6px 10px',
                               textAlign: 'left',
                               border: '1px solid #cbd5e1',
-                              width: '25%',
+                              width: '18%',
                             }}
                           >
                             Ativo
@@ -1958,49 +2232,74 @@ export default function Page() {
                               padding: '6px 10px',
                               textAlign: 'left',
                               border: '1px solid #cbd5e1',
-                              width: '35%',
+                              width: '25%',
                             }}
                           >
-                            Código de Falha
+                            Código / Evento
                           </th>
                           <th
                             style={{
                               padding: '6px 10px',
                               textAlign: 'left',
                               border: '1px solid #cbd5e1',
-                              width: '40%',
+                              width: '22%',
                             }}
                           >
-                            Pré-informação
+                            Início da Parada
+                          </th>
+                          <th
+                            style={{
+                              padding: '6px 10px',
+                              textAlign: 'left',
+                              border: '1px solid #cbd5e1',
+                              width: '35%',
+                            }}
+                          >
+                            Motivo / Descrição
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {stopped
                           .filter((s) => s.asset.trim())
-                          .map((s, sIdx) => (
-                            <tr key={sIdx}>
-                              <td style={{ fontWeight: 800 }}>
-                                {getCodeEmoji(s.code)} {formatCA(s.asset)}
-                              </td>
-                              <td>{s.code}</td>
-                              <td>
-                                {s.discipline ? (
-                                  <span className="pdf-badge preinfo">
-                                    {s.discipline}
-                                  </span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8' }}>
-                                    Não informada
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                          .map((s, sIdx) => {
+                            const codeShort = (s.code || '')
+                              .split('–')[0]
+                              .trim();
+                            const subCode = s.subCode || 'EXEC MANUT';
+                            return (
+                              <tr key={sIdx}>
+                                <td style={{ fontWeight: 800 }}>
+                                  {getCodeEmoji(s.code)} {formatCA(s.asset)}
+                                </td>
+                                <td>
+                                  <strong>{codeShort}</strong> - {subCode}
+                                </td>
+                                <td>
+                                  {s.startTime ? (
+                                    formatDateTimeWhatsApp(s.startTime)
+                                  ) : (
+                                    <span style={{ color: '#94a3b8' }}>
+                                      Não informado
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  {s.reason || s.discipline ? (
+                                    s.reason || s.discipline
+                                  ) : (
+                                    <span style={{ color: '#94a3b8' }}>
+                                      Não informado
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         {stopped.filter((s) => s.asset.trim()).length === 0 && (
                           <tr>
                             <td
-                              colSpan={3}
+                              colSpan={4}
                               style={{
                                 color: '#888',
                                 fontStyle: 'italic',
