@@ -1,137 +1,144 @@
-# Relatório de Manutenção Corretiva
+# Relatório de Turno AHS – Manutenção Corretiva Mina
 
-Aplicação frontend para padronizar relatórios de serviços de final de turno de manutenção corretiva.
+Sistema oficial para padronização, geração e exportação de relatórios de turno da manutenção corretiva em frotas autônomas AHS (*Autonomous Haulage System* - Sotreq / Caterpillar).
 
-O sistema permite preencher os dados do turno, classificar a falha usando uma árvore hierárquica, registrar vários atendimentos e gerar uma mensagem pronta para envio pelo WhatsApp.
+A aplicação consolida os atendimentos realizados, gerencia justificativas de atraso com herança cronológica, classifica falhas por taxonomia real de campo (43.773 linhas), monitora a disponibilidade operacional da frota e gera saídas integradas para **WhatsApp**, **Ficha Oficial em PDF (Sotreq CAT)** e **Planilha CSV (Excel / PowerBI)**.
 
-## Funcionalidades
+---
 
-- Cadastro dos dados do turno:
-  - Data;
-  - Turno;
-  - Turma;
-  - Supervisor;
-  - Executantes.
-- Registro de um ou mais atendimentos no mesmo relatório.
-- Seleção do código de manutenção:
-  - HMC – 9200;
-  - MPS – 9600;
-  - MPNS – 9100;
-  - HAC – 9700.
-- Classificação hierárquica da falha em cinco níveis:
-  1. Sistema;
-  2. Componente;
-  3. Subcomponente;
-  4. Causa;
-  5. Solução.
-- Registro de diagnóstico e solução aplicada.
-- Seleção do status final:
-  - Liberado;
-  - Em manutenção;
-  - Aguardando recurso;
-  - Aguardando componente.
-- Cadastro de equipamentos parados com seus respectivos códigos.
-- Geração de mensagem em formato de texto.
-- Abertura da mensagem no WhatsApp.
-- Cópia da mensagem para a área de transferência, preservando emojis e acentos.
+## 🚀 Tecnologias
 
-## Tecnologias
+- **Framework:** Next.js 15 (App Router)
+- **Biblioteca de UI:** React 19
+- **Estilização:** CSS3 Moderno com suporte nativo a impressão A4 (@media print) e layout responsivo mobile-first
+- **Persistência:** `localStorage` com recuperação automática e sanitização de rascunhos
+- **Taxonomia de Falhas:** JSON estruturado de campo (`src/data/fault-tree.json`)
 
-- HTML;
-- CSS;
-- JavaScript;
-- Vite;
-- JSON para a árvore de falhas.
+---
 
-## Requisitos
+## 🏛️ Estrutura Arquitetural do Projeto
 
-- Node.js instalado;
-- npm disponível no ambiente.
-
-## Instalação
-
-No terminal, dentro da pasta do projeto, execute:
-
-```powershell
-npm.cmd install
-```
-
-## Executar em desenvolvimento
-
-```powershell
-npm.cmd run dev
-```
-
-Depois, abra no navegador o endereço exibido pelo Vite, normalmente:
+O código é estruturado seguindo princípios de responsabilidade única e Clean Architecture:
 
 ```text
-http://localhost:5173
-```
-
-## Gerar build de produção
-
-```powershell
-npm.cmd run build
-```
-
-O resultado será gerado na pasta `dist/`.
-
-Para visualizar o build localmente:
-
-```powershell
-npm.cmd run preview
-```
-
-## Como usar
-
-1. Abra a aplicação no navegador.
-2. Preencha os dados do turno.
-3. Na seção **Ativos em manutenção**, preencha o primeiro atendimento.
-4. Se houver outro equipamento trabalhado, clique em **Adicionar atendimento**.
-5. Selecione os cinco níveis da árvore de falhas na ordem:
-   - Sistema;
-   - Componente;
-   - Subcomponente;
-   - Causa;
-   - Solução.
-6. Preencha o diagnóstico, a solução aplicada e o status final.
-7. Cadastre os equipamentos parados, se houver.
-8. Clique em **Gerar WhatsApp**.
-9. Na pré-visualização, escolha uma opção:
-   - **Abrir no WhatsApp** para enviar a mensagem;
-   - **Copiar mensagem** para colar manualmente em uma conversa.
-
-## Árvore de falhas
-
-A árvore utilizada pela aplicação está em:
-
-`src/data/fault-tree.json`
-
-Sua estrutura possui cinco níveis de classificação. Para adicionar ou atualizar opções, altere esse arquivo mantendo a hierarquia existente.
-
-## Estrutura do projeto
-
-```text
-.
-├── index.html
+relatorioturnoahs/
+├── app/
+│   ├── globals.css                       # Estilos globais, tema Sotreq CAT, resets mobile iOS e @media print A4
+│   ├── layout.jsx                        # Layout raiz com metadata e viewport mobile
+│   └── page.jsx                          # Orquestrador principal da página (estado e sincronização)
+├── public/
+│   └── logo-sotreq.png                   # Identidade visual corporativa oficial Sotreq CAT
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Field.jsx                 # Inputs e textareas padronizados (com fix para iOS Safari)
+│   │   │   └── SelectField.jsx           # Dropdown reutilizável com suporte a tags customizadas
+│   │   ├── modal/
+│   │   │   └── PdfReportModal.jsx        # Modal e layout oficial de impressão da Ficha A4 Sotreq CAT
+│   │   ├── preview/
+│   │   │   └── WhatsAppPreview.jsx       # Pré-visualização da mensagem formatada para WhatsApp
+│   │   └── sections/
+│   │       ├── ShiftDataSection.jsx      # Dados do Turno (Data, Turno, Turma, Oficina, Supervisor, Técnicos)
+│   │       ├── AppointmentsSection.jsx   # Gestor de atendimentos da manutenção corretiva
+│   │       ├── AppointmentItem.jsx       # Card de atendimento com taxonomia em cascata e atrasos filhos
+│   │       ├── StoppedSection.jsx        # Gestão de equipamentos parados na mina
+│   │       ├── OperatingSection.jsx      # Grid dinâmico de caminhões operando em modo autônomo
+│   │       └── FleetSummarySection.jsx   # Indicadores e barras de disponibilidade operacional da frota
+│   ├── constants/
+│   │   └── index.js                      # Constantes da frota (23 caminhões), status, equipes e justificativas
+│   ├── data/
+│   │   └── fault-tree.json               # Árvore hierárquica oficial de falhas AHS (43.773 linhas)
+│   └── utils/
+│       ├── formatters.js                 # Utilitários de prefixo CA/CM, tags, horários, emojis e resumo da frota
+│       ├── reportGenerator.js            # Engine de compilação da mensagem oficial para WhatsApp
+│       └── exportCsv.js                  # Engine de exportação CSV com UTF-8 BOM e separador ';'
+├── jsconfig.json                         # Mapeamento de paths (@/*)
 ├── package.json
-├── plan.md
-├── prompt.md
-└── src
-    ├── data
-    │   └── fault-tree.json
-    ├── main.js
-    └── style.css
+└── README.md
 ```
 
-## PDF
+---
 
-A geração do PDF foi deixada para uma etapa futura. Atualmente, o projeto concentra-se no preenchimento do relatório e no envio da versão textual pelo WhatsApp.
+## ⚡ Principais Funcionalidades
 
-## Próximos passos
+### 1. 📋 Atendimentos & Árvore de Falhas AHS
+- Classificação taxonômica oficial em 5 níveis hierárquicos:
+  1. **Sistema**
+  2. **Conjunto**
+  3. **Item**
+  4. **Problema**
+  5. **Solução**
+- **Reset em cascata:** Alterações em níveis superiores limpam e revalidam automaticamente os níveis filhos.
+- **Auto-preenchimento:** Quando há apenas uma solução associada à causa na taxonomia, ela é selecionada de imediato.
+- **Sincronização de Status:**
+  - Status `Liberado` preenche automaticamente o horário de término com a hora local atual e encerra o último atraso.
+  - Status `Em manutenção` bloqueia e limpa o horário fim, mantendo o atendimento em aberto.
 
-- Implementar o PDF com o layout da ficha operacional de referência.
-- Adicionar validação dos campos obrigatórios.
-- Permitir múltiplos relatórios salvos.
-- Criar backend para persistência dos relatórios.
-- Implementar histórico/ledger de atendimentos.
+### 2. ⏳ Gestão Cronológica de Atrasos (Subcódigos Filhos)
+- O 1º atraso é obrigatoriamente `AG ATENDIMENTO` e herda o *Horário Início MineStar*.
+- Atrasos subsequentes iniciam rigorosamente no instante em que o atraso anterior terminou.
+- O término do atendimento acompanha em tempo real o encerramento do último evento de atraso.
+
+### 3. 🚚 Monitoramento da Frota Autônoma
+- Frota base de 23 caminhões:
+  - **CAT 797F:** CA55xx (12 caminhões)
+  - **CAT 794 AC:** CA57xx (11 caminhões)
+- **Cálculo dinâmico:** Qualquer caminhão lançado em *Equipamentos Parados* ou em *Atendimento ativo* sai automaticamente da rota autônoma e contabiliza em manutenção.
+- **Taxas de disponibilidade:** Cartões estatísticos com porcentagens e barras de progresso operacionais.
+
+### 4. 📄 Ficha Oficial em PDF (Sotreq CAT)
+- Layout rigorosamente fiel aos comunicados industriais de campo:
+  - Moldura perimetral amarela oficial Caterpillar.
+  - Cabeçalho padronizado com logotipo Sotreq CAT.
+  - Linhas de rótulo neutras e tabelas limpas.
+  - **Rodapé industrial:** Barra preta chanfrada na logo Sotreq CAT e 3 pilares em SVG amarelo (*Disciplina*, *Confiabilidade*, *Parceria*).
+  - Folha A4 portrait com regras `@media print` para eliminar páginas em branco indesejadas.
+
+### 5. 💬 Integração WhatsApp
+- Saída textual limpa, com formatação rica em emojis operacionais:
+  - 🟢 Autônomo
+  - 🟡 MPS (9600)
+  - 🟠 MPNS (9100)
+  - 🔴 HMC (9200) / HAC (9700)
+- Botões de **Copiar Mensagem** (para colar em qualquer conversa) e **Abrir no WhatsApp Web/Mobile**.
+
+### 6. 📊 Exportação em CSV (Excel / PowerBI)
+- Codificação **UTF-8 com BOM** e separador de colunas `;` (padrão regional Excel brasileiro).
+- Higienização automática: todos os emojis são removidos das células para garantir integridade analítica no PowerBI/bancos de dados.
+
+### 7. 📱 Otimização Mobile (iOS Safari & iPhone 15)
+- Reset completo de `input[type="datetime-local"]` e `type="date"` prevenindo quebras de layout causadas por larguras intrínsecas do WebKit.
+- Fontes com tamanho mínimo de 16px para desativar o auto-zoom invasivo do Safari ao focar nos campos.
+- Espaçamento confortável (`margin-bottom`) em cabeçalhos de seção e botões.
+
+---
+
+## 🛠️ Comandos de Instalação e Execução
+
+### Instalar Dependências
+```bash
+npm install
+```
+
+### Rodar Ambiente de Desenvolvimento
+```bash
+npm run dev
+```
+Acesse no navegador: `http://localhost:3000`
+
+### Gerar Build de Produção
+```bash
+npm run build
+```
+
+### Iniciar Build de Produção
+```bash
+npm run start
+```
+
+---
+
+## 📜 Licença e Governança
+
+Desenvolvido para governança operacional e controle de turno AHS da **Sotreq / Caterpillar**.  
+Mentor: **Gamamaru** | Engenheiro Responsável: **Pedro Henrique (DevJiraya)**.
