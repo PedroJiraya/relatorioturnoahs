@@ -5,13 +5,7 @@ import faultTree from '../src/data/fault-tree.json';
 
 const STORAGE_KEY = 'relatorio_turno_ahs_draft_v1';
 
-const codes = [
-  'HMC – 9200',
-  'MPS – 9600',
-  'MPNS – 9100',
-  'HAC – 9700',
-  'Operando autônomo',
-];
+const codes = ['HMC – 9200', 'MPS – 9600', 'MPNS – 9100', 'HAC – 9700'];
 const statuses = ['Liberado', 'Em manutenção'];
 
 const teams = ['A', 'B', 'C', 'D', 'ADM'];
@@ -29,7 +23,6 @@ const stoppedPreInfo = [
 ];
 
 const delayJustifications = [
-  'EXEC MANUT',
   'EXEC MECANICA',
   'EXEC ELETRICA',
   'EXEC ELETRONICA/AUTOMACAO',
@@ -74,7 +67,8 @@ const delayJustifications = [
   'AG OFICINA DE COMPONENTES',
   'AG ATENDIMENTO',
   'AG SIST EMBARCADOS/AUTOMACAO',
-  'AG CALLPAD',
+  'AG FILA CALLPAD',
+  'AG O.M SAP',
   'AG PTS',
 ];
 
@@ -82,6 +76,7 @@ const systems = Object.keys(faultTree);
 
 const fleetEquipments = [
   'CA5516',
+  'CA5522',
   'CA5525',
   'CA5527',
   'CA5528',
@@ -91,7 +86,7 @@ const fleetEquipments = [
   'CA5532',
   'CA5533',
   'CA5534',
-  'CA5535',
+  'CA5536',
   'CA5704',
   'CA5706',
   'CA5710',
@@ -1199,7 +1194,7 @@ export default function Page() {
 
     const appointmentsSection = appointmentText
       ? `ATENDIMENTO DOS ATIVOS EM MANUTENÇÃO\n\n${appointmentText}`
-      : `ATENDIMENTO DOS ATIVOS EM MANUTENÇÃO\n\nNenhum atendimento registrado no turno`;
+      : `RELATORIO DE ATUALIZAÇÃO DE FROTA`;
 
     return `${greeting}\n\n${emoji.clipboard} RELATÓRIO DE TURNO – MANUTENÇÃO CORRETIVA\n🏢 Local: ${workshop || 'Oficina N4WN'}\n\n${emoji.calendar} Data: ${dateText}\n${emoji.clock} Turno: ${shift}\n${emoji.worker} Turma: ${team || 'Não informado'}\n${emoji.compass} Supervisor: ${supervisor || 'Não informado'}\n${emoji.mechanic} Executantes:\n${executors || 'Não informado'}\n\n____________________________________\n\n${appointmentsSection}${conclusionBlock}\n\n____________________________________\n\n${stoppedSection}\n\n____________________________________\n\n🚚 EQUIPAMENTOS OPERANDO AUTÔNOMO\n${operatingText}${summaryText}`;
   };
@@ -1434,7 +1429,7 @@ export default function Page() {
       <header className="hero">
         <div>
           <p className="eyebrow">Manutenção corretiva</p>
-          <h1>Relatório de turno</h1>
+          <h1>Relatório de Turno</h1>
           <p className="subtitle">
             Preencha os atendimentos e gere WhatsApp ou ficha PDF.
           </p>
