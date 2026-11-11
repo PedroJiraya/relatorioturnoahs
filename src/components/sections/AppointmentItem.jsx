@@ -168,23 +168,61 @@ export default function AppointmentItem({
             type="button"
             className="small outline"
             onClick={() => {
+              const now = getLocalDatetimeString();
               const currentDelays = item.delays || [];
-              const lastDelay =
-                currentDelays.length > 0
-                  ? currentDelays[currentDelays.length - 1]
-                  : null;
-              const nextStart =
-                currentDelays.length === 0
-                  ? item.startTime || ''
-                  : lastDelay?.endTime || '';
 
+              if (currentDelays.length === 0) {
+                const start = item.startTime || now;
+                const newDelay = {
+                  justification: 'AG ATENDIMENTO',
+                  startTime: start,
+                  endTime: '',
+                };
+                const updates = { delays: [newDelay] };
+                if (!item.startTime) {
+                  updates.startTime = start;
+                }
+                update(index, updates);
+                return;
+              }
+
+              const updated = [...currentDelays];
+              const lastIdx = updated.length - 1;
+
+              // Pega a hora atual para finalizar o atraso corrente e iniciar o novo atraso
+              const transitionTime = updated[lastIdx]?.endTime?.trim()
+                ? updated[lastIdx].endTime
+                : now;
+
+              // Garante que o atraso corrente receba o término da transição:
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                startTime:
+                  lastIdx === 0
+                    ? item.startTime || updated[lastIdx].startTime || transitionTime
+                    : updated[lastIdx].startTime ||
+                      updated[lastIdx - 1]?.endTime ||
+                      transitionTime,
+                endTime: transitionTime,
+              };
+
+              // Cria o novo atraso iniciando na hora da transição:
               const newDelay = {
-                justification:
-                  currentDelays.length === 0 ? 'AG ATENDIMENTO' : '',
-                startTime: nextStart,
+                justification: '',
+                startTime: transitionTime,
                 endTime: '',
               };
-              update(index, { delays: [...currentDelays, newDelay] });
+
+              const changes = {
+                delays: [...updated, newDelay],
+              };
+
+              // Se o início geral do atendimento estava vazio, preenche com o início do primeiro atraso:
+              if (!item.startTime) {
+                changes.startTime = updated[0]?.startTime || transitionTime;
+              }
+
+              update(index, changes);
             }}
             title="Adicionar subcódigo filho de atraso ou execução de manutenção"
             style={{
@@ -227,6 +265,9 @@ export default function AppointmentItem({
               dIdx === 0
                 ? item.startTime || delay.startTime || ''
                 : item.delays[dIdx - 1]?.endTime || delay.startTime || '';
+
+            const isLastDelay = dIdx === item.delays.length - 1;
+            const isEndTimeDisabled = isLastDelay && item.status !== 'Liberado';
 
             return (
               <div className="delay-row" key={dIdx}>
@@ -292,7 +333,7 @@ export default function AppointmentItem({
                 <input
                   type="datetime-local"
                   value={delay.endTime || ''}
-                  disabled={item.status !== 'Liberado'}
+                  disabled={isEndTimeDisabled}
                   onChange={(e) => {
                     const newEndTime = e.target.value;
                     const updated = [...item.delays];
@@ -315,7 +356,6 @@ export default function AppointmentItem({
                     }
                     const changes = { delays: updated };
                     // O Horário Fim Technician sempre acompanha o fim do último subcódigo filho:
-                    const isLastDelay = dIdx === updated.length - 1;
                     if (isLastDelay) {
                       changes.endTime = newEndTime;
                     }
@@ -323,12 +363,12 @@ export default function AppointmentItem({
                   }}
                   placeholder="Fim"
                   title={
-                    item.status !== 'Liberado'
-                      ? "Bloqueado: selecione o Status Final como 'Liberado' para preencher o fim do atraso"
+                    isEndTimeDisabled
+                      ? "Em andamento: adicione um novo atraso ou selecione 'Liberado' para finalizar"
                       : 'Horário Fim do Atraso'
                   }
                   style={
-                    item.status !== 'Liberado'
+                    isEndTimeDisabled
                       ? {
                           background: '#f1f5f9',
                           color: '#94a3b8',

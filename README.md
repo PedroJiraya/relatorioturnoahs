@@ -1,6 +1,6 @@
 # Relatório de Turno AHS – Manutenção Corretiva Mina
 
-Sistema oficial para padronização, geração e exportação de relatórios de turno da manutenção corretiva em frotas autônomas AHS (*Autonomous Haulage System* - Sotreq / Caterpillar).
+Sistema oficial para padronização, geração e exportação de relatórios de turno da manutenção corretiva em frotas autônomas AHS (_Autonomous Haulage System_ - Sotreq / Caterpillar).
 
 A aplicação consolida os atendimentos realizados, gerencia justificativas de atraso com herança cronológica, classifica falhas por taxonomia real de campo (43.773 linhas), monitora a disponibilidade operacional da frota e gera saídas integradas para **WhatsApp**, **Ficha Oficial em PDF (Sotreq CAT)** e **Planilha CSV (Excel / PowerBI)**.
 
@@ -62,6 +62,7 @@ relatorioturnoahs/
 ## ⚡ Principais Funcionalidades
 
 ### 1. 📋 Atendimentos & Árvore de Falhas AHS
+
 - Classificação taxonômica oficial em 5 níveis hierárquicos:
   1. **Sistema**
   2. **Conjunto**
@@ -75,26 +76,30 @@ relatorioturnoahs/
   - Status `Em manutenção` bloqueia e limpa o horário fim, mantendo o atendimento em aberto.
 
 ### 2. ⏳ Gestão Cronológica de Atrasos (Subcódigos Filhos)
-- O 1º atraso é obrigatoriamente `AG ATENDIMENTO` e herda o *Horário Início MineStar*.
+
+- O 1º atraso é obrigatoriamente `AG ATENDIMENTO` e herda o _Horário Início MineStar_.
 - Atrasos subsequentes iniciam rigorosamente no instante em que o atraso anterior terminou.
 - O término do atendimento acompanha em tempo real o encerramento do último evento de atraso.
 
 ### 3. 🚚 Monitoramento da Frota Autônoma
+
 - Frota base de 23 caminhões:
   - **CAT 797F:** CA55xx (12 caminhões)
   - **CAT 794 AC:** CA57xx (11 caminhões)
-- **Cálculo dinâmico:** Qualquer caminhão lançado em *Equipamentos Parados* ou em *Atendimento ativo* sai automaticamente da rota autônoma e contabiliza em manutenção.
+- **Cálculo dinâmico:** Qualquer caminhão lançado em _Equipamentos Parados_ ou em _Atendimento ativo_ sai automaticamente da rota autônoma e contabiliza em manutenção.
 - **Taxas de disponibilidade:** Cartões estatísticos com porcentagens e barras de progresso operacionais.
 
 ### 4. 📄 Ficha Oficial em PDF (Sotreq CAT)
+
 - Layout rigorosamente fiel aos comunicados industriais de campo:
   - Moldura perimetral amarela oficial Caterpillar.
   - Cabeçalho padronizado com logotipo Sotreq CAT.
   - Linhas de rótulo neutras e tabelas limpas.
-  - **Rodapé industrial:** Barra preta chanfrada na logo Sotreq CAT e 3 pilares em SVG amarelo (*Disciplina*, *Confiabilidade*, *Parceria*).
+  - **Rodapé industrial:** Barra preta chanfrada na logo Sotreq CAT e 3 pilares em SVG amarelo (_Disciplina_, _Confiabilidade_, _Parceria_).
   - Folha A4 portrait com regras `@media print` para eliminar páginas em branco indesejadas.
 
 ### 5. 💬 Integração WhatsApp
+
 - Saída textual limpa, com formatação rica em emojis operacionais:
   - 🟢 Autônomo
   - 🟡 MPS (9600)
@@ -103,10 +108,12 @@ relatorioturnoahs/
 - Botões de **Copiar Mensagem** (para colar em qualquer conversa) e **Abrir no WhatsApp Web/Mobile**.
 
 ### 6. 📊 Exportação em CSV (Excel / PowerBI)
+
 - Codificação **UTF-8 com BOM** e separador de colunas `;` (padrão regional Excel brasileiro).
 - Higienização automática: todos os emojis são removidos das células para garantir integridade analítica no PowerBI/bancos de dados.
 
 ### 7. 📱 Otimização Mobile (iOS Safari & iPhone 15)
+
 - Reset completo de `input[type="datetime-local"]` e `type="date"` prevenindo quebras de layout causadas por larguras intrínsecas do WebKit.
 - Fontes com tamanho mínimo de 16px para desativar o auto-zoom invasivo do Safari ao focar nos campos.
 - Espaçamento confortável (`margin-bottom`) em cabeçalhos de seção e botões.
@@ -116,22 +123,27 @@ relatorioturnoahs/
 ## 🛠️ Comandos de Instalação e Execução
 
 ### Instalar Dependências
+
 ```bash
 npm install
 ```
 
 ### Rodar Ambiente de Desenvolvimento
+
 ```bash
 npm run dev
 ```
+
 Acesse no navegador: `http://localhost:3000`
 
 ### Gerar Build de Produção
+
 ```bash
 npm run build
 ```
 
 ### Iniciar Build de Produção
+
 ```bash
 npm run start
 ```
@@ -142,3 +154,28 @@ npm run start
 
 Desenvolvido para governança operacional e controle de turno AHS da **Sotreq / Caterpillar**.  
 Mentor: **Gamamaru** | Engenheiro Responsável: **Pedro Henrique (DevJiraya)**.
+
+### 🏛️ Nova Estrutura Arquitetural do Projeto
+
+    src/
+    ├── components/
+    │   ├── modal/
+    │   │   └── PdfReportModal.jsx       # 📄 Gerador da Ficha PDF / Impressão Oficial Sotreq CAT
+    │   ├── preview/
+    │   │   └── WhatsAppPreview.jsx      # 💬 Saída formatada WhatsApp (Copiar, Abrir, CSV)
+    │   ├── sections/
+    │   │   ├── ShiftDataSection.jsx     # 🕒 Dados do Turno (Data, Turno, Turma, Oficina, etc.)
+    │   │   ├── AppointmentsSection.jsx  # 📋 Lista de Atendimentos da Manutenção
+    │   │   ├── AppointmentItem.jsx      # 🛠️ Card individual de atendimento com taxonomia em cascata e atrasos
+    │   │   ├── StoppedSection.jsx       # 🚚 Equipamentos Parados (com add/remove e layout mobile)
+    │   │   ├── OperatingSection.jsx     # 🟢 Equipamentos Operando Autônomo (chips dinâmicos)
+    │   │   └── FleetSummarySection.jsx  # 📊 Resumo da Frota (Total, CAT 797F e CAT 794 AC com barras de progresso)
+    │   └── common/
+    │       ├── Field.jsx                # 🔲 Input e Textarea reutilizáveis (com fix para iOS)
+    │       └── SelectField.jsx          # 🔽 Dropdown customizável com suporte a tags
+    ├── constants/
+    │   └── index.js                     # 📌 Constantes de frota, códigos de manutenção, justificativas e emojis
+    └── utils/
+        ├── formatters.js                # ⚙️ Utilitários de data, tag CA/CM, emojis, taxonomia e cálculo de frota
+        ├── reportGenerator.js           # ✍️ Gerador do texto oficial de saída para WhatsApp
+        └── exportCsv.js                 # 📊 Exportador de CSV limpo com UTF-8 BOM e separador ';'
