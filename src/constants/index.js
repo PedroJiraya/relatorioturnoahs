@@ -74,7 +74,6 @@ export const systems = Object.keys(faultTree);
 
 export const fleetEquipments = [
   'CA5516',
-  'CA5522',
   'CA5525',
   'CA5527',
   'CA5528',
